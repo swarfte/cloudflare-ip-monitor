@@ -1,5 +1,4 @@
 <template>
-
   <div class="min-h-screen bg-gray-50 p-6">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <!-- Header Section -->
@@ -67,7 +66,8 @@
               </span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-              <button class="text-red-600 hover:text-red-800 transition-colors duration-150">
+              <button @click="deleteRecord(record.domain)"
+                class="text-red-600 hover:text-red-800 transition-colors duration-150">
                 <i class="fas fa-trash"></i>
               </button>
             </td>
@@ -134,8 +134,8 @@
     </div>
 
     <!-- Settings Dialog -->
-    <div v-if="showSettings" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center
-            transition-opacity duration-300 z-50">
+    <div v-if="showSettings"
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center transition-opacity duration-300 z-50">
       <div class="bg-white rounded-xl p-6 w-[480px] transform transition-all duration-300 scale-100">
         <div class="flex justify-between items-center mb-6">
           <h3 class="text-xl font-semibold text-gray-800">Settings</h3>
@@ -150,8 +150,8 @@
                       focus:border-blue-500 focus:ring-blue-500 transition-colors">
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Account ID</label>
-            <input type="text" v-model="settings.accountId" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm
+            <label class="block text-sm font-medium text-gray-700 mb-2">API Token</label>
+            <input type="password" v-model="settings.apiToken" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm
                       focus:border-blue-500 focus:ring-blue-500 transition-colors">
           </div>
           <div>
@@ -182,12 +182,12 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import type { IpResponse, DnsRecordResponse } from '@datatype/object'
 
-// Interfaces
 interface Settings {
   zoneId: string
-  accountId: string
+  apiToken: string
   syncInterval: number
 }
 
@@ -196,170 +196,160 @@ interface DnsRecord {
   isRaw: boolean
   syncedTime: string
   syncedIP: string
-  result: 'pending' | 'success' | 'failed'
-}
-
-interface NewRecord {
-  domain: string
-  isRaw: boolean
+  result: string
 }
 
 // State
 const currentIP = ref<string>('')
 const nextSyncTime = ref<string>('')
 const records = ref<DnsRecord[]>([])
-const showAddDialog = ref<boolean>(false)
-const showSettings = ref<boolean>(false)
+const showAddDialog = ref(false)
+const showSettings = ref(false)
 const syncTimer = ref<NodeJS.Timer | null>(null)
-const isTaskRunning = ref<boolean>(false)
+const isTaskRunning = ref(false)
 
 const settings = ref<Settings>({
   zoneId: '',
-  accountId: '',
+  apiToken: '',
   syncInterval: 5
 })
 
-const newRecord = ref<NewRecord>({
+const newRecord = ref({
   domain: '',
   isRaw: false
 })
 
-// Dialog Controls
-const openAddDialog = (): void => {
-  showAddDialog.value = true
+// Debug logger
+const logger = {
+  log: (message: string, data?: unknown) => {
+    console.log(`[DEBUG] ${message}`, data || '')
+  },
+  error: (message: string, error?: unknown) => {
+    console.error(`[ERROR] ${message}`, error || '')
+  }
 }
 
-const closeAddDialog = (): void => {
+logger.log('Initializing component global variables')
+
+const closeSettings = () => {
+  logger.log('closeSettings function called')
+  showSettings.value = false
+}
+
+const openSettings = () => {
+  logger.log('openSettings function called')
+  showSettings.value = true
+}
+
+const closeAddDialog = () => {
+  logger.log('closeAddDialog function called')
   showAddDialog.value = false
+}
+
+const openAddDialog = () => {
+  logger.log('openAddDialog function called')
   newRecord.value = {
     domain: '',
     isRaw: false
   }
+  showAddDialog.value = true
 }
 
-const openSettings = (): void => {
-  showSettings.value = true
-}
+const addRecord = () => {
+  logger.log('addRecord function called', newRecord.value)
 
-const closeSettings = (): void => {
-  showSettings.value = false
-}
-
-// LocalStorage Operations
-const loadSettings = (): void => {
-  try {
-    const savedSettings = localStorage.getItem('cloudflare-settings')
-    if (savedSettings) {
-      settings.value = JSON.parse(savedSettings)
-    }
-  } catch (error) {
-    console.error('Error loading settings:', error)
-  }
-}
-
-const saveSettings = (): void => {
-  try {
-    localStorage.setItem('cloudflare-settings', JSON.stringify(settings.value))
-    closeSettings()
-    restartSyncTask()
-  } catch (error) {
-    console.error('Error saving settings:', error)
-  }
-}
-
-const loadRecords = (): void => {
-  try {
-    const savedRecords = localStorage.getItem('cloudflare-records')
-    if (savedRecords) {
-      records.value = JSON.parse(savedRecords)
-    }
-  } catch (error) {
-    console.error('Error loading records:', error)
-  }
-}
-
-const saveRecords = (): void => {
-  try {
-    localStorage.setItem('cloudflare-records', JSON.stringify(records.value))
-  } catch (error) {
-    console.error('Error saving records:', error)
-  }
-}
-
-// IP and Time Operations
-const getCurrentIP = async (): Promise<string | null> => {
-  try {
-    const response = await fetch('https://api.ipify.org?format=json')
-    const data = await response.json()
-    currentIP.value = data.ip
-    return data.ip
-  } catch (error) {
-    console.error('Error fetching IP:', error)
-    return null
-  }
-}
-
-const updateNextSyncTime = (): void => {
-  const next = new Date(Date.now() + settings.value.syncInterval * 60000)
-  nextSyncTime.value = next.toLocaleTimeString()
-}
-
-// Record Operations
-const addRecord = (): void => {
-  if (!newRecord.value.domain) {
-    alert('Please enter a domain')
+  if (!newRecord.value.domain.trim()) {
+    logger.error('Add record failed: Domain is required')
+    alert('Domain is required')
     return
   }
 
-  const record: DnsRecord = {
+  const existing = records.value.find(r => r.domain === newRecord.value.domain)
+  if (existing) {
+    logger.error('Add record failed: Domain already exists', newRecord.value.domain)
+    alert('Domain already exists')
+    return
+  }
+
+  records.value.push({
     domain: newRecord.value.domain,
     isRaw: newRecord.value.isRaw,
     syncedTime: '-',
     syncedIP: '-',
-    result: 'pending'
-  }
+    result: '-'
+  })
 
-  records.value.push(record)
+  logger.log('New record added', newRecord.value)
   saveRecords()
   closeAddDialog()
 }
 
-const deleteRecord = (domain: string): void => {
-  if (confirm('Are you sure you want to delete this record?')) {
-    records.value = records.value.filter(r => r.domain !== domain)
-    saveRecords()
+// Cloudflare API operations
+const getDnsRecordId = async (domain: string): Promise<string | null> => {
+  logger.log('getDnsRecordId function called', domain)
+  try {
+    const response = await $fetch(
+      `/api/dnsRecord?zoneId=${settings.value.zoneId}&domain=${domain}&apiKey=${settings.value.apiToken}`,
+    ) as any as DnsRecordResponse
+
+    logger.log(`DNS record ID response status: ${response.statusCode}`)
+    const data = response.data as { result: { id: string }[] }
+    logger.log('DNS record ID response data:', data)
+
+    if (data.result && data.result.length > 0) {
+      return data.result[0].id
+    } else {
+      return null
+    }
+  } catch (error) {
+    logger.error('Error to get DNS record ID:', error)
+    return null
   }
 }
 
-// Sync Operations
 const syncRecord = async (record: DnsRecord): Promise<boolean> => {
+  logger.log('syncRecord function called', record)
   try {
-    if (!currentIP.value) {
-      throw new Error('Current IP is not available')
+    logger.log(`Starting sync for record: ${record.domain}`)
+    const ip = await getCurrentIP()
+    if (!ip) {
+      logger.error('Sync failed: No IP address available')
+      throw new Error('Failed to get current IP')
     }
 
-    // Add your Cloudflare API call here
-    const response = await fetch(`https://api.cloudflare.com/client/v4/zones/${settings.value.zoneId}/dns_records`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${settings.value.accountId}`
-      },
-      body: JSON.stringify({
+    const recordId = await getDnsRecordId(record.domain)
+    logger.log(`recordId for ${record.domain}: ${recordId || 'Not found, will create new'}`)
+
+    const method = recordId ? 'PUT' : 'POST'
+
+    const response = await $fetch("/api/dnsRecord/", {
+      method,
+      body: {
         type: 'A',
         name: record.domain,
-        content: currentIP.value,
-        proxied: !record.isRaw
-      })
+        content: ip,
+        ttl: 1,
+        proxied: !record.isRaw,
+        zoneId: settings.value.zoneId,
+        apiKey: settings.value.apiToken,
+        recordId
+      }
     })
 
-    const result = await response.json()
+    const data = response.data as { success: boolean, errors: any[] }
+    logger.log(`syncRecord response data for ${record.domain}:`, data)
+
+    // Check Cloudflare's "success" field and also check "errors" if any
+    const success = data.success
+    if (!success && data.errors) {
+      logger.error('Cloudflare API returned errors:', data.errors)
+    }
 
     const updatedRecord: DnsRecord = {
       ...record,
       syncedTime: new Date().toLocaleString(),
-      syncedIP: currentIP.value,
-      result: result.success ? 'success' : 'failed'
+      syncedIP: ip,
+      result: success ? 'success' : 'failed'
     }
 
     const index = records.value.findIndex(r => r.domain === record.domain)
@@ -368,9 +358,9 @@ const syncRecord = async (record: DnsRecord): Promise<boolean> => {
       saveRecords()
     }
 
-    return result.success
+    return success
   } catch (error) {
-    console.error('Error syncing record:', error)
+    logger.error(`Error syncing record ${record.domain}:`, error)
     const index = records.value.findIndex(r => r.domain === record.domain)
     if (index !== -1) {
       records.value[index] = {
@@ -384,74 +374,195 @@ const syncRecord = async (record: DnsRecord): Promise<boolean> => {
   }
 }
 
+const deleteRecord = async (domain: string) => {
+  logger.log('deleteRecord function called', domain)
+  if (!confirm(`Are you sure you want to delete ${domain}?`)) {
+    logger.log('deleteRecord action canceled by user')
+    return
+  }
+
+  try {
+    const recordId = await getDnsRecordId(domain)
+    logger.log(`Deleting record ID: ${recordId}`)
+
+    if (recordId) {
+      const response = await $fetch("/api/dnsRecord/", {
+
+        method: 'DELETE',
+        body: {
+          zoneId: settings.value.zoneId,
+          recordId,
+          apiKey: settings.value.apiToken
+        }
+      })
+
+      logger.log(`Delete response status: ${response.statusCode}`)
+      if (!(response.statusCode === 200)) {
+        throw new Error('Failed to delete from Cloudflare')
+      }
+    }
+
+    records.value = records.value.filter(r => r.domain !== domain)
+    logger.log(`Record ${domain} deleted successfully`)
+    saveRecords()
+  } catch (error) {
+    logger.error(`Error deleting record ${domain}:`, error)
+    alert(`Failed to delete record: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+// Local storage operations
+const loadSettings = (): void => {
+  logger.log('loadSettings function called')
+  const savedSettings = localStorage.getItem('cloudflare-settings')
+  if (savedSettings) {
+    try {
+      settings.value = JSON.parse(savedSettings)
+      logger.log('Settings loaded', settings.value)
+    } catch (error) {
+      logger.error('Error loading settings:', error)
+    }
+  }
+}
+
+const saveSettings = (): void => {
+  logger.log('saveSettings function called')
+  if (!validateSettings()) return
+  localStorage.setItem('cloudflare-settings', JSON.stringify(settings.value))
+  logger.log('Settings saved successfully')
+  closeSettings()
+  restartSyncTask()
+}
+
+const loadRecords = (): void => {
+  logger.log('loadRecords function called')
+  const savedRecords = localStorage.getItem('cloudflare-records')
+  if (savedRecords) {
+    try {
+      records.value = JSON.parse(savedRecords)
+      logger.log('Records loaded', records.value)
+    } catch (error) {
+      logger.error('Error loading records:', error)
+    }
+  }
+}
+
+const saveRecords = (): void => {
+  logger.log('saveRecords function called')
+  localStorage.setItem('cloudflare-records', JSON.stringify(records.value))
+}
+
+// IP and sync operations
+const getCurrentIP = async (): Promise<string | null> => {
+  logger.log('getCurrentIP function called')
+  try {
+    const response = await $fetch('/api/currentIP') as any as IpResponse
+    const data = response.data as { ip: string };
+    currentIP.value = data.ip
+    logger.log('Current IP:', data.ip)
+    return data.ip
+  } catch (error) {
+    logger.error('Error to get current IP:', error)
+    return null
+  }
+}
+
 const syncAllRecords = async (): Promise<void> => {
+  logger.log('syncAllRecords function called')
   const ip = await getCurrentIP()
   if (!ip) {
+    logger.error('Aborting sync: No IP address available')
     alert('Failed to get current IP')
     return
   }
 
   updateNextSyncTime()
-
+  logger.log(`Syncing ${records.value.length} record(s)`)
   for (const record of records.value) {
+    logger.log('Synchronizing record:', record.domain)
     await syncRecord(record)
   }
 }
 
+// Sync task management
 const startSync = async (): Promise<void> => {
-  if (!settings.value.zoneId || !settings.value.accountId) {
-    alert('Please configure Zone ID and Account ID in settings first')
+  logger.log('startSync function called')
+  if (!validateSettings()) {
+    logger.log('Settings invalid, opening settings dialog')
     openSettings()
     return
   }
 
   if (isTaskRunning.value) {
+    logger.log('Sync task already running')
     alert('Sync task is already running')
     return
   }
 
+  logger.log('Starting sync task for the first time')
   isTaskRunning.value = true
   await restartSyncTask()
 }
 
 const stopSync = (): void => {
+  logger.log('stopSync function called')
   if (syncTimer.value) {
     clearInterval(syncTimer.value)
     syncTimer.value = null
   }
   isTaskRunning.value = false
   nextSyncTime.value = '-'
+  logger.log('Sync task stopped')
 }
 
 const restartSyncTask = async (): Promise<void> => {
+  logger.log('restartSyncTask function called')
   stopSync()
-
-  // Initial sync
   await syncAllRecords()
 
-  // Set up new timer
+  logger.log(`Setting sync interval to ${settings.value.syncInterval} minute(s)`)
   syncTimer.value = setInterval(async () => {
+    logger.log('Interval sync triggered')
     await syncAllRecords()
   }, settings.value.syncInterval * 60000)
+
+  updateNextSyncTime()
+}
+
+const updateNextSyncTime = (): void => {
+  logger.log('updateNextSyncTime function called')
+  const next = new Date(Date.now() + settings.value.syncInterval * 60000)
+  nextSyncTime.value = next.toLocaleTimeString()
+  logger.log('Next sync time updated:', nextSyncTime.value)
 }
 
 // Validation
 const validateSettings = (): boolean => {
-  if (!settings.value.zoneId || !settings.value.accountId) {
-    alert('Please fill in all required fields')
+  logger.log('validateSettings function called')
+
+  if (!settings.value.zoneId.trim()) {
+    logger.error('Validation failed: zoneId is required')
+    alert('Zone ID is required')
     return false
   }
-
+  if (!settings.value.apiToken.trim()) {
+    logger.error('Validation failed: apiToken is required')
+    alert('API Token is required')
+    return false
+  }
   if (settings.value.syncInterval < 1 || settings.value.syncInterval > 1440) {
+    logger.error('Validation failed: syncInterval out of range')
     alert('Sync interval must be between 1 and 1440 minutes')
     return false
   }
 
+  logger.log('Settings validation passed')
   return true
 }
 
 // Lifecycle hooks
 onMounted(() => {
+  logger.log('onMounted hook called')
   loadSettings()
   loadRecords()
   getCurrentIP()
@@ -459,15 +570,17 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  logger.log('onUnmounted hook called')
   stopSync()
 })
 
-// Watch for settings changes
-watch(() => settings.value, () => {
+watch(() => settings.value.syncInterval, () => {
+  logger.log('Sync interval changed to', settings.value.syncInterval)
   if (isTaskRunning.value) {
+    logger.log('Restarting sync task due to interval change')
     restartSyncTask()
   }
-}, { deep: true })
+})
 </script>
 
 <style></style>
