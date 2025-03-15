@@ -1,8 +1,8 @@
 {
-  "name": "nuxt-app",
+  "name": "Cloudflare-IP-Monitor",
   "private": true,
   "type": "module",
-  "main": "dist-electron/main.js",
+  "main": "app.vue",
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
@@ -10,6 +10,9 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
   },
+  "version": "1.0.0",
+  "author": "Swarfte",
+  "description": "A simple IP monitor for Cloudflare using Nuxt 3 and Electron.",
   "dependencies": {
     "@nuxt/eslint": "^1.1.0",
     "@nuxt/fonts": "^0.10.3",
@@ -26,9 +29,6 @@
     "vue-router": "latest"
   },
   "devDependencies": {
-    "electron": "^34.2.0",
-    "electron-builder": "^25.1.8",
-    "nuxt-electron": "^0.7.0",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6"
   }

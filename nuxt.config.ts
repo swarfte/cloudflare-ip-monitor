@@ -19,21 +19,8 @@ export default defineNuxtConfig({
   colorMode: {
     preference: "light",
   },
-  devServer: {
-    port: Number(`${process.env.VITE_DEV_SERVER_URL as string}`.split(":")[2]),
-  },
-
   eslint: {
     // options here
-  },
-  electron: {
-    disableDefaultOptions: true,
-    build: [
-      {
-        // Main-Process entry file of the Electron App.
-        entry: "electron/main.ts",
-      },
-    ],
   },
   modules: [
     "@nuxt/eslint",
@@ -44,6 +31,5 @@ export default defineNuxtConfig({
     "@vueuse/nuxt",
     //"@nuxtjs/i18n",
     "@nuxtjs/device",
-    "nuxt-electron",
   ],
 });

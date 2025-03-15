@@ -106,13 +106,13 @@
             <label class="block text-sm font-medium text-gray-700 mb-2">IP Configuration</label>
             <div class="flex items-center space-x-3">
               <button @click="newRecord.proxied = true"
-                :class="!newRecord.proxied ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-700'"
+                :class="newRecord.proxied ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-700'"
                 class="px-4 py-2 rounded-lg border-2 flex-1 transition-all duration-200">
                 <div class="font-medium">Proxied</div>
                 <div class="text-sm">Use Cloudflare proxy</div>
               </button>
               <button @click="newRecord.proxied = false"
-                :class="newRecord.proxied ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-700'"
+                :class="!newRecord.proxied ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-700'"
                 class="px-4 py-2 rounded-lg border-2 flex-1 transition-all duration-200">
                 <div class="font-medium">Direct</div>
                 <div class="text-sm">Raw IP connection</div>
@@ -146,7 +146,7 @@
         <div class="space-y-6">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Zone ID</label>
-            <input type="text" v-model="settings.zoneId" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm
+            <input type="password" v-model="settings.zoneId" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm
                       focus:border-blue-500 focus:ring-blue-500 transition-colors">
           </div>
           <div>
@@ -243,7 +243,7 @@ const openAddDialog = () => {
   showAddDialog.value = true
 }
 
-const addRecord = () => {
+const addRecord = async () => {
   logger.log('addRecord function called', newRecord.value)
 
   if (!newRecord.value.domain.trim()) {
@@ -266,6 +266,8 @@ const addRecord = () => {
     syncedIP: '-',
     result: '-'
   })
+
+  await createRecord(records.value[records.value.length - 1])
 
   logger.log('New record added', newRecord.value)
   saveRecords()
@@ -318,6 +320,70 @@ const getDnsRecordId = async (domain: string): Promise<string | null> => {
   }
 }
 
+const createRecord = async (record: DnsRecord): Promise<boolean> => {
+  logger.log('syncRecord function called', record)
+  try {
+    logger.log(`Starting sync for record: ${record.domain}`)
+    const ip = await getCurrentIP()
+    if (!ip) {
+      logger.error('Sync failed: No IP address available')
+      throw new Error('Failed to get current IP')
+    }
+
+    const method = 'POST'
+
+    const response = await $fetch("/api/dnsRecord/", {
+      method,
+      body: {
+        type: 'A',
+        name: record.domain,
+        content: ip,
+        ttl: 1,
+        proxied: record.proxied,
+        zoneId: settings.value.zoneId,
+        apiKey: settings.value.apiToken,
+      }
+    })
+
+    const data = response.data as { success: boolean, errors: any[] }
+    logger.log(`syncRecord response data for ${record.domain}:`, data)
+
+    // Check Cloudflare's "success" field and also check "errors" if any
+    const success = data.success
+    if (!success && data.errors) {
+      logger.error('Cloudflare API returned errors:', data.errors)
+    }
+
+    const updatedRecord: DnsRecord = {
+      ...record,
+      syncedTime: new Date().toLocaleString(),
+      syncedIP: ip,
+      result: success ? 'success' : 'failed'
+    }
+
+    const index = records.value.findIndex(r => r.domain === record.domain)
+    if (index !== -1) {
+      records.value[index] = updatedRecord
+      saveRecords()
+    }
+
+    return success
+  } catch (error) {
+    logger.error(`Error syncing record ${record.domain}:`, error)
+    const index = records.value.findIndex(r => r.domain === record.domain)
+    if (index !== -1) {
+      records.value[index] = {
+        ...record,
+        syncedTime: new Date().toLocaleString(),
+        result: 'failed'
+      }
+      saveRecords()
+    }
+    return false
+  }
+}
+
+
 const syncRecord = async (record: DnsRecord): Promise<boolean> => {
   logger.log('syncRecord function called', record)
   try {
@@ -331,7 +397,7 @@ const syncRecord = async (record: DnsRecord): Promise<boolean> => {
     const recordId = await getDnsRecordId(record.domain)
     logger.log(`recordId for ${record.domain}: ${recordId || 'Not found, will create new'}`)
 
-    const method = recordId ? 'PUT' : 'POST'
+    const method = 'PUT'
 
     const response = await $fetch("/api/dnsRecord/", {
       method,
@@ -443,7 +509,6 @@ const saveSettings = async () => {
   logger.log('Settings saved successfully')
   closeSettings()
   await loadExistingDnsRecord()
-  restartSyncTask()
 }
 
 const loadRecords = (): void => {
