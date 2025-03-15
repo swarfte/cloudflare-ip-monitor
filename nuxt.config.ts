@@ -19,21 +19,52 @@ export default defineNuxtConfig({
   colorMode: {
     preference: "light",
   },
-  devServer: {
-    port: Number(`${process.env.VITE_DEV_SERVER_URL as string}`.split(":")[2]),
-  },
-
   eslint: {
     // options here
   },
-  electron: {
-    disableDefaultOptions: true,
-    build: [
-      {
-        // Main-Process entry file of the Electron App.
-        entry: "electron/main.ts",
-      },
-    ],
+  pwa: {
+    /* PWA options */
+    manifest: {
+      id: "cloudflare-ip-monitor",
+      name: "Cloudflare IP Monitor",
+      short_name: "CFIPM",
+      description: "Cloudflare IP Monitor",
+      theme_color: "#ffffff",
+      screenshots: [
+        {
+          src: "./public/screenshot/screenshot.png",
+          sizes: "2560x1251",
+          type: "image/png",
+          form_factor: "wide",
+          label: "Application",
+        },
+      ],
+      icons: [
+        {
+          src: "./public/icons/icon_512x512.png",
+          sizes: "512x512",
+          type: "image/png",
+        },
+      ],
+    },
+
+    workbox: {
+      navigateFallback: "/",
+      runtimeCaching: [
+        {
+          urlPattern: ({ url }) => url.pathname.startsWith("/"),
+          handler: "NetworkFirst",
+          options: {
+            cacheName: "dynamic-cache",
+            expiration: {
+              maxEntries: 50,
+              maxAgeSeconds: 300, // Cache for 5 minutes
+            },
+          },
+        },
+      ],
+    },
+    registerType: "autoUpdate",
   },
   modules: [
     "@nuxt/eslint",
@@ -44,6 +75,6 @@ export default defineNuxtConfig({
     "@vueuse/nuxt",
     //"@nuxtjs/i18n",
     "@nuxtjs/device",
-    "nuxt-electron",
+    "@vite-pwa/nuxt",
   ],
 });
