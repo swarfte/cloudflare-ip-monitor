@@ -22,6 +22,50 @@ export default defineNuxtConfig({
   eslint: {
     // options here
   },
+  pwa: {
+    /* PWA options */
+    manifest: {
+      id: "cloudflare-ip-monitor",
+      name: "Cloudflare IP Monitor",
+      short_name: "CFIPM",
+      description: "Cloudflare IP Monitor",
+      theme_color: "#ffffff",
+      screenshots: [
+        {
+          src: "./public/screenshot/screenshot.png",
+          sizes: "2560x1251",
+          type: "image/png",
+          form_factor: "wide",
+          label: "Application",
+        },
+      ],
+      icons: [
+        {
+          src: "./public/icons/icon_512x512.png",
+          sizes: "512x512",
+          type: "image/png",
+        },
+      ],
+    },
+
+    workbox: {
+      navigateFallback: "/",
+      runtimeCaching: [
+        {
+          urlPattern: ({ url }) => url.pathname.startsWith("/"),
+          handler: "NetworkFirst",
+          options: {
+            cacheName: "dynamic-cache",
+            expiration: {
+              maxEntries: 50,
+              maxAgeSeconds: 300, // Cache for 5 minutes
+            },
+          },
+        },
+      ],
+    },
+    registerType: "autoUpdate",
+  },
   modules: [
     "@nuxt/eslint",
     "@nuxt/ui",
@@ -31,5 +75,6 @@ export default defineNuxtConfig({
     "@vueuse/nuxt",
     //"@nuxtjs/i18n",
     "@nuxtjs/device",
+    "@vite-pwa/nuxt",
   ],
 });
