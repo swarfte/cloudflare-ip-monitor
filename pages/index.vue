@@ -43,7 +43,7 @@
         <thead class="bg-gray-50">
           <tr>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Domain</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Is Raw</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proxied</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Sync</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -53,9 +53,9 @@
           <tr v-for="record in records" :key="record.domain" class="hover:bg-gray-50 transition-colors duration-150">
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ record.domain }}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-              <span :class="record.isRaw ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'"
+              <span :class="record.proxied ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'"
                 class="px-2 py-1 rounded-full text-xs font-medium">
-                {{ record.isRaw ? 'Yes' : 'No' }}
+                {{ record.proxied ? 'Yes' : 'No' }}
               </span>
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.syncedTime }}</td>
@@ -105,14 +105,14 @@
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">IP Configuration</label>
             <div class="flex items-center space-x-3">
-              <button @click="newRecord.isRaw = false"
-                :class="!newRecord.isRaw ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-700'"
+              <button @click="newRecord.proxied = true"
+                :class="!newRecord.proxied ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-700'"
                 class="px-4 py-2 rounded-lg border-2 flex-1 transition-all duration-200">
                 <div class="font-medium">Proxied</div>
                 <div class="text-sm">Use Cloudflare proxy</div>
               </button>
-              <button @click="newRecord.isRaw = true"
-                :class="newRecord.isRaw ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-700'"
+              <button @click="newRecord.proxied = false"
+                :class="newRecord.proxied ? 'bg-blue-100 border-blue-500 text-blue-700' : 'bg-gray-50 border-gray-300 text-gray-700'"
                 class="px-4 py-2 rounded-lg border-2 flex-1 transition-all duration-200">
                 <div class="font-medium">Direct</div>
                 <div class="text-sm">Raw IP connection</div>
@@ -183,21 +183,9 @@
 
 <script lang="ts" setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
-import type { IpResponse, DnsRecordResponse } from '@datatype/object'
+import type { IpResponse, DnsRecordResponse, RawDnsRecord, DnsRecord, Settings } from '@datatype/object'
 
-interface Settings {
-  zoneId: string
-  apiToken: string
-  syncInterval: number
-}
 
-interface DnsRecord {
-  domain: string
-  isRaw: boolean
-  syncedTime: string
-  syncedIP: string
-  result: string
-}
 
 // State
 const currentIP = ref<string>('')
@@ -216,7 +204,7 @@ const settings = ref<Settings>({
 
 const newRecord = ref({
   domain: '',
-  isRaw: false
+  proxied: true
 })
 
 // Debug logger
@@ -250,7 +238,7 @@ const openAddDialog = () => {
   logger.log('openAddDialog function called')
   newRecord.value = {
     domain: '',
-    isRaw: false
+    proxied: true
   }
   showAddDialog.value = true
 }
@@ -273,7 +261,7 @@ const addRecord = () => {
 
   records.value.push({
     domain: newRecord.value.domain,
-    isRaw: newRecord.value.isRaw,
+    proxied: newRecord.value.proxied,
     syncedTime: '-',
     syncedIP: '-',
     result: '-'
@@ -282,6 +270,29 @@ const addRecord = () => {
   logger.log('New record added', newRecord.value)
   saveRecords()
   closeAddDialog()
+}
+
+// get all the DNS records from Cloudflare
+const getAllDnsRecord = async (): Promise<RawDnsRecord[] | null> => {
+  logger.log('getAllDnsRecord function called')
+  try {
+    const response = await $fetch(
+      `/api/dnsRecord/all?zoneId=${settings.value.zoneId}&apiKey=${settings.value.apiToken}`,
+    ) as any as DnsRecordResponse
+
+    logger.log(`DNS record response status: ${response.statusCode}`)
+    const data = response.data as { result: RawDnsRecord[] }
+    logger.log('DNS record response data:', data)
+
+    if (data.result && data.result.length > 0) {
+      return data.result
+    } else {
+      return null
+    }
+  } catch (error) {
+    logger.error('Error to get DNS records:', error)
+    return null
+  }
 }
 
 // Cloudflare API operations
@@ -329,7 +340,7 @@ const syncRecord = async (record: DnsRecord): Promise<boolean> => {
         name: record.domain,
         content: ip,
         ttl: 1,
-        proxied: !record.isRaw,
+        proxied: record.proxied,
         zoneId: settings.value.zoneId,
         apiKey: settings.value.apiToken,
         recordId
@@ -425,12 +436,13 @@ const loadSettings = (): void => {
   }
 }
 
-const saveSettings = (): void => {
+const saveSettings = async () => {
   logger.log('saveSettings function called')
   if (!validateSettings()) return
   localStorage.setItem('cloudflare-settings', JSON.stringify(settings.value))
   logger.log('Settings saved successfully')
   closeSettings()
+  await loadExistingDnsRecord()
   restartSyncTask()
 }
 
@@ -507,7 +519,7 @@ const startSync = async (): Promise<void> => {
 const stopSync = (): void => {
   logger.log('stopSync function called')
   if (syncTimer.value) {
-    clearInterval(syncTimer.value)
+    clearInterval(syncTimer.value as any)
     syncTimer.value = null
   }
   isTaskRunning.value = false
@@ -560,11 +572,29 @@ const validateSettings = (): boolean => {
   return true
 }
 
+const loadExistingDnsRecord = async () => {
+  logger.log('loadExistingDnsRecord function called')
+  const oldRecord = await getAllDnsRecord()
+  if (oldRecord && oldRecord.length > 0) {
+    records.value = oldRecord.map(record => ({
+      domain: record.name,
+      proxied: record.proxied,
+      syncedTime: '-',
+      syncedIP: '-',
+      result: '-'
+    }))
+    saveRecords()
+  } else {
+    logger.error('No existing DNS records found')
+  }
+}
+
 // Lifecycle hooks
-onMounted(() => {
+onMounted(async () => {
   logger.log('onMounted hook called')
   loadSettings()
-  loadRecords()
+  await loadExistingDnsRecord()
+  //loadRecords()
   getCurrentIP()
   updateNextSyncTime()
 })
