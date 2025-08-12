@@ -29,8 +29,8 @@
       <div class="p-6 border-b border-gray-200">
         <div class="flex justify-between items-center">
           <h2 class="text-xl font-semibold text-gray-800">Domain Records</h2>
-          <button @click="openAddDialog" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg 
-                         flex items-center space-x-2 transition-all duration-200 
+          <button @click="openAddDialog" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg
+                         flex items-center space-x-2 transition-all duration-200
                          hover:shadow-lg transform hover:-translate-y-0.5">
             <i class="fas fa-plus"></i>
             <span>Add Record</span>
@@ -164,6 +164,14 @@
                 Range: 1-1440 minutes
               </div>
             </div>
+          </div>
+          <!-- add a link to let the user know how to get the zoom id and api key-->
+          <div class="text-sm text-gray-500 mt-2">
+            <i class="fas fa-info-circle mr-1"></i>
+            <a href="https://github.com/swarfte/cloudflare-ip-monitor" target="_blank"
+              class="text-blue-600 hover:underline">
+              How to get Zone ID and API Token
+            </a>
           </div>
           <div class="flex justify-end space-x-3 mt-6">
             <button @click="closeSettings" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700
@@ -534,7 +542,7 @@ const getCurrentIP = async (): Promise<string | null> => {
   logger.log('getCurrentIP function called')
   try {
     const response = await $fetch('/api/currentIP') as any as IpResponse
-    const data = response.data as { ip: string };
+    const data = response.data as { ip: string }
     currentIP.value = data.ip
     logger.log('Current IP:', data.ip)
     return data.ip
