@@ -4,7 +4,7 @@
   "type": "module",
   "main": "app.vue",
   "scripts": {
-    "build": "nuxt build --prerender && electron-builder",
+    "build": "nuxt build",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
